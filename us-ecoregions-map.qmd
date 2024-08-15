@@ -1,6 +1,8 @@
 ---
 title: "Creating a map of the US and its territories"
 format: html
+editor_options: 
+  chunk_output_type: console
 ---
 
 This scrips walks through how to plot the a map of the continental US with additional insets of US territories. For this example we use the `shift_geometry()` function from the `tigris` package to plot the continental US, Alaska, Hawaii and Puerto Rico in one map.
@@ -19,6 +21,7 @@ library(janitor)
 library(readr)
 library(stringr)
 library(ggrepel)
+library(patchwork)
 ```
 
 
@@ -53,7 +56,7 @@ us_states_shift <- us_states %>%
 
 For the continental US we are using the aggregated ecoregions used in the National Aquatic Resource Surveys. You can download this data at the [EPA website](https://www.epa.gov/national-aquatic-resource-surveys/ecoregions-used-national-aquatic-resource-surveys).
 
-These data divided the continental US in 9 ecoregions. 
+These data divides the continental US in 9 ecoregions. 
 
 
 ```{r}
@@ -115,6 +118,7 @@ casc_shp <- us_states %>%
   left_join(us_state_casc, by= c("GEOID", "STUSPS", "NAME")) %>% 
   group_by(casc_region) %>% 
   summarise(geometry = st_union(geometry))
+
 plot(casc_shp$geometry)
 
 ## shift geometries for easy plotting
@@ -128,7 +132,7 @@ plot(casc_shift$geometry)
 
 
 ## Cleaning Ecoregion data
-To be able to plot all the regions in one map, we need to get both ecoregions files in the same format. This means column names should ,atch so we can bind both files.
+To be able to plot all the regions in one map, we need to get both ecoregions files in the same format. This means column names should match so we can bind both files.
 
 ```{r}
 ## Rename columns to a generic name
@@ -152,6 +156,8 @@ plot(ecoregion_ak_clean$geometry)
 ```
 
 ## Bind ecoregions data into one file
+We use the `dplyr::bind_rows()` function to combine both data frames into one with all the ecoregions. One We have all the information in one place we apply the `shift_geometry()` to get the polygons in the projection we want for plotting.
+
 
 ```{r}
 ecoregions_all <- bind_rows(ecoregions_cont_us_clean, 
@@ -167,6 +173,7 @@ plot(ecoregions_shift$geometry)
 
 
 ## Plot ecoregions + cities + casc
+Below is the initial plot that shows how we can layer different `sf` objects in s `ggplot` by using the `geom_sf()` function.
 
 ```{r}
 
@@ -188,6 +195,8 @@ us_plot
 
 
 ## Customize map
+Finally, we are adding some customization to our plot to make it look "publication-grade". Note that these are just a few ways we could customize this plot. `ggplot2` and all the packages around `ggplot` provide endless possibilities on how to go about your plots. There is lot's of documentation about `ggplot2` online, feel free to search other possibilities to add or modify from this plot.
+
 ```{r}
 
 finalized_plot <-  ggplot()+
@@ -227,5 +236,115 @@ finalized_plot <-  ggplot()+
 finalized_plot
 
 ```
+
+
+## Additional Information
+
+**More on `shift_geometry()`**
+
+There are different option of output for this function. Remember you can always search for the the help by running `?shift_geometry()` in the console and get more details about how this function works. Let's see other possible outcomes when using this function.
+
+```{r}
+## Alaska, Hawaii and Puerto Rico "outside" of the continental US as opposed to below.
+us_states_outside <- us_states %>% 
+  shift_geometry(position = "outside")
+
+plot(us_states_outside$geometry)
+
+```
+
+We can also set `preserve_area = TRUE` to keep the area of each territory the relative size compared to the continental US.
+
+```{r}
+us_states_area <- us_states %>% 
+  shift_geometry(preserve_area = TRUE)
+
+plot(us_states_area$geometry)
+```
+
+Or, combine both options presented above.
+
+
+```{r}
+us_states_outside_area <- us_states %>% 
+  shift_geometry(preserve_area = TRUE,
+                 position = "outside")
+
+plot(us_states_outside_area$geometry)
+
+```
+
+
+**Exploring other ways to plot the US and its territorises**
+
+
+Break down one of the `sf` data frames with a `shift_geometry()` to inspect in more details the  CRS for each territory.
+
+```{r}
+## Filtering each data set to plot independently
+alaska <- us_states_shift %>% 
+  filter(NAME == "Alaska")
+
+hawaii <- us_states_shift %>% 
+  filter(NAME == "Hawaii")
+
+puerto_rico <- us_states_shift %>% 
+  filter(NAME == "Puerto Rico")
+
+continent <- us_states_shift %>% 
+  filter(!NAME %in% c("Alaska", "Hawaii", "Puerto Rico"))
+
+
+```
+
+Exploring other ways of plotting the US and its territories using `patchwork`
+```{r}
+
+alaska_plot <- ggplot()+
+  geom_sf(data = alaska)+
+  theme_void()
+
+hawaii_plot <- ggplot()+
+  geom_sf(data = hawaii)+
+  theme_void()
+
+pr_plot <- ggplot()+
+  geom_sf(data = puerto_rico)+
+  theme_void()
+
+
+cont_plot <- ggplot()+
+  geom_sf(data = continent)+
+  theme_void()
+
+
+## combined plot
+cont_plot + {
+  alaska_plot | hawaii_plot | pr_plot +
+    plot_layout(ncol = 3)
+  } +
+  plot_layout(ncol = 1)
+
+```
+
+## Resurces
+
+**`patchwork`**
+
+- [ggplot multiple plots made ridiculuous simple using patchwork R package](https://www.datanovia.com/en/blog/ggplot-multiple-plots-made-ridiculuous-simple-using-patchwork-r-package/)
+
+- [Patchwork documentation on controlling layouts](https://patchwork.data-imaginist.com/articles/guides/layout.html)
+
+
+**Spatial Data Visualization**
+
+- [Visualizing Spatial Data, NCEAS Learning Hub Lesson by Rachel King](https://learning.nceas.ucsb.edu/2024-03-ucsb-faculty/session_05.html)
+
+- [Visualizing geospatial data by Claus Wilke](https://clauswilke.com/dataviz/geospatial-data.html)
+
+- [Mapping Census data in R by Kyle Walker](https://walker-data.com/census-r/mapping-census-data-with-r.html) (author of the `tigirs` package)
+
+- [`ggcart`](https://uncoast-unconf.github.io/ggcart/), an interesting package to look into. "The goal of ggcart is to include Puerto Rico, the Virgin Islands and Guam in the traditional Albers maps"
+
 
 
